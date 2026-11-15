@@ -69,3 +69,15 @@ test('rejects an invalid share link and opens an imported snapshot',async ({page
   await expect(page.locator('.metric.housing .metric-main b')).toHaveText('200')
   await expect(page.getByRole('status')).toHaveCount(0)
 })
+
+test('drag the selected width from the palette onto the map',async ({page,baseURL,isMobile})=>{
+  test.skip(isMobile,'The touch placement path is covered separately.')
+  await page.goto(baseURL!)
+  const generator=page.locator('.palette').getByRole('button',{name:/Power Generator/})
+  await generator.click()
+  await page.getByRole('button',{name:'2 sections',exact:true}).click()
+  await generator.dragTo(page.getByRole('button',{name:'Floor 4 · 11',exact:true}))
+  const room=page.getByRole('button',{name:'Power Generator · Floor 4',exact:true})
+  await expect(room).toBeVisible()
+  await expect(room).toHaveCSS('grid-column-end','span 6')
+})

@@ -80,8 +80,6 @@ export const width = (room: Pick<Room, 'type' | 'sections'>) => room.type === 'E
 export const cellKey = ({row, col}: Point) => row * COLS + col
 export const rockPrice = (row: number) => 50 + row * 25
 export const overlaps = (a: Room, b: Room) => a.row === b.row && a.col < b.col + width(b) && b.col < a.col + width(a)
-const touches = (a: Room, b: Room) => a.row === b.row && (a.col + width(a) === b.col || b.col + width(b) === a.col)
-const neighbor = (a: Room, b: Room) => touches(a, b) || (a.type === 'Elevator' && b.type === 'Elevator' && a.col === b.col && Math.abs(a.row - b.row) === 1)
 export const contains = (room: Room, p: Point) => room.row === p.row && room.col <= p.col && p.col < room.col + width(room)
 export const buildable = ({row, col}: Point) => row >= 0 && row < FLOORS && col >= (row === 0 ? 9 : 0) && col < COLS
 export const housingCapacity = (rooms: Room[]) => rooms.reduce((sum, r) => sum + variant(r).housing, 0)
@@ -92,11 +90,24 @@ export function connected(rooms: Room[]): Set<number> {
   const start = rooms.find(r => r.type === 'Entrance')
   const visited = new Set<number>()
   if (!start) return visited
+  const cells = new Map<number, Room>()
+  for (const room of rooms) {
+    for (let offset = 0; offset < width(room); offset++) cells.set(cellKey(room) + offset, room)
+  }
   const queue = [start]
   visited.add(start.id)
   for (const room of queue) {
-    for (const candidate of rooms) {
-      if (!visited.has(candidate.id) && neighbor(room, candidate)) {
+    const key = cellKey(room)
+    const neighbors = [room.col > 0 ? cells.get(key - 1) : undefined,
+      room.col + width(room) < COLS ? cells.get(key + width(room)) : undefined]
+    if (room.type === 'Elevator') {
+      for (const step of [-COLS,COLS]) {
+        const lift = cells.get(key + step)
+        if (lift?.type === 'Elevator') neighbors.push(lift)
+      }
+    }
+    for (const candidate of neighbors) {
+      if (candidate && !visited.has(candidate.id)) {
         visited.add(candidate.id)
         queue.push(candidate)
       }
@@ -115,13 +126,15 @@ export function mergeCandidates(room: Room, list: Room[]) {
   const type = byType[room.type]
   if (type.widths.length === 1) return []
   const group: Room[] = []
+  let remaining = 3 - room.sections
   const same = list.filter(r => r.id !== room.id && r.type === room.type && r.level === room.level)
   for (const side of [-1, 1]) {
     let edge = room
-    for (;;) {
+    while (remaining > 0) {
       const next = same.find(r => side === -1 ? r.row === edge.row && r.col + width(r) === edge.col : r.row === edge.row && edge.col + width(edge) === r.col)
-      if (!next) break
+      if (!next || next.sections > remaining) break
       group.push(next)
+      remaining -= next.sections
       edge = next
     }
   }
@@ -236,6 +249,13 @@ export function removeRoom(vault: Vault, id: number): EditResult {
   const error = topologyError(vault, rooms, true)
   if (error) return {error}
   return {vault: {...vault, rooms, offline: vault.offline.filter(key => key !== id), costs: vault.remodel ? [...vault.costs, demolition(room)] : vault.costs}}
+}
+
+export function startRemodel(vault: Vault): EditResult {
+  if (connected(vault.rooms).size < vault.rooms.length) return {error:'disconnected'}
+  if (housingCapacity(vault.rooms) < vault.population) return {error:'housing'}
+  if (itemCapacity(vault.rooms) < vault.inventory) return {error:'inventory'}
+  return {vault:{...vault,remodel:true,costs:[]}}
 }
 
 export function toggleRock(vault: Vault, location: Point): EditResult {

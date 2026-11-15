@@ -249,3 +249,14 @@ html[lang='ru'] .intro h1 em { font-size: .72em; font-weight: 760; letter-spacin
   .print-legend { display:flex; gap:5px; flex-wrap:wrap; margin-top:8pt; break-inside:avoid; }
   .print-legend span { border-left:3px solid; padding:1px 4px; font-size:8pt; }
 }
+.budget-link {
+  margin-left:auto; padding:2px 3px; flex:none; border-radius:3px;
+  color:var(--green); white-space:nowrap; font:400 10px var(--mono);
+}
+.budget-link:hover { background:#343e2a; }
+.footer a:first-of-type { margin-left:auto; }
+@media(max-width:650px) {
+  .board-footer { flex-wrap:wrap; }
+  .board-footer span:first-child { flex:1 0 100%; }
+  .budget-link { margin-left:0; }
+}
