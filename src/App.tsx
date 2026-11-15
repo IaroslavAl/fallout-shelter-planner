@@ -1,8 +1,9 @@
 import { useEffect, useMemo, useRef, useState, type CSSProperties, type DragEvent, type KeyboardEvent, type MouseEvent, type ReactNode } from 'react'
-import { ArrowDownToLine, ArrowUpRight, Bot, Cross, Droplet, Drill, Dumbbell, GitBranch, Layers3, Link2, Lock, Move, Package, Plus, Redo2, Search, Shield, Trash2, Undo2, Unlock, Users, Utensils, X, Zap } from 'lucide-react'
+import { ArrowDownToLine, ArrowUpRight, Bot, Cross, Droplet, Drill, Dumbbell, GitBranch, Image as ImageIcon, Layers3, Link2, Lock, Move, Package, Plus, Redo2, Search, Shield, Trash2, Undo2, Unlock, Users, Utensils, X, Zap } from 'lucide-react'
 import { buildable, byType, catalog, cellKey, COLS, contains, editRoom, example, FLOORS, newBuildCost, nextId, outage, raidRoute, removeRoom, resources, rockPrice, roomRate, startRemodel, summarize, toggleRock, variant, width, type EditResult, type Essential, type Failure, type Group, type Language, type Point, type Resource, type Room, type Vault } from './model'
 import { colors, exportPNG, legendGroups, hasPlan, num, parseFragment, planFragment, planJSON, readPlan, saveFile } from './portable'
 import { messages, type Label } from './i18n'
+import { bedrock, roomTiles, stones, surface, thumbnail, tileStyle, type View } from './roomArt'
 
 const baseResources = ['power','food','water'] as const
 const icons = {power:Zap,food:Utensils,water:Droplet,housing:Users,storage:Package,utility:Layers3,medicine:Cross,craft:Drill,training:Dumbbell,nuka:Droplet}
@@ -20,6 +21,19 @@ const preferred = (): Language => {
     if (saved==='ru'||saved==='en') return saved
   } catch { /* Browser storage is optional. */ }
   return navigator.language.toLowerCase().startsWith('ru')?'ru':'en'
+}
+
+function preferredView(): View {
+  try {
+    if (localStorage.getItem('planner-view') === 'schematic') return 'schematic'
+  } catch { /* Browser storage is optional. */ }
+  return 'illustrated'
+}
+
+function Art({tiles,className=''}:{tiles:ReturnType<typeof roomTiles>;className?:string}) {
+  return <span className={'room-art '+className} aria-hidden="true">
+    {tiles.map((tile, index)=><span key={index} style={tileStyle(tile)}/>)}
+  </span>
 }
 
 type History = {past:Vault[]; vault:Vault; future:Vault[]}
@@ -60,6 +74,8 @@ function keyboardStep(event: KeyboardEvent<HTMLElement>, p:Point) {
 
 export default function App() {
   const [language,setLanguage]=useState<Language>(preferred)
+  const [view,setView]=useState<View>(preferredView)
+  const illustrated=view==='illustrated'
   const t:Translator=key=>messages[language][key]
   const [initial]=useState(setup)
   const [history,setHistory]=useState<History>({past:[],vault:initial.vault,future:[]})
@@ -110,6 +126,9 @@ export default function App() {
     document.documentElement.lang=language
     try { localStorage.setItem('planner-lang',language) } catch { /* Optional preference. */ }
   },[language])
+  useEffect(()=>{
+    try { localStorage.setItem('planner-view',view) } catch { /* Optional preference. */ }
+  },[view])
   useEffect(()=>{
     const listener=(event:globalThis.KeyboardEvent)=>{
       if (event.key==='Escape') { setTool(undefined); setHover(undefined); setChooseOutage(false);setExportOpen(false) }
@@ -254,7 +273,7 @@ export default function App() {
           <div className="export-wrap">
             <button className="button" aria-expanded={exportOpen} onClick={()=>setExportOpen(v=>!v)}><ArrowDownToLine size={16}/>{t('export')}</button>
             {exportOpen&&<div className="export-menu">
-              <button onClick={()=>{exportPNG(vault,t('title')+' · '+t('planner'),printMetrics,language,legendGroups.map(t));setExportOpen(false)}}>{t('download')}</button>
+              <button onClick={()=>{void exportPNG(vault,t('title')+' · '+t('planner'),printMetrics,language,legendGroups.map(t),view);setExportOpen(false)}}>{t('download')}</button>
               <button onClick={()=>{setExportOpen(false);window.print()}}>{t('print')}</button>
               <button onClick={()=>{saveFile(new Blob([planJSON(vault)],{type:'application/json'}),'fallout-shelter-plan.json');setExportOpen(false)}}>{t('json')}</button>
               <button onClick={()=>{file.current?.click();setExportOpen(false)}}>{t('import')}</button>
@@ -287,7 +306,7 @@ export default function App() {
         <button className="icon-button" aria-label={t('close')} onClick={()=>{setNotice(null);setShareLink(undefined)}}><X size={16}/></button>
       </div>}
       <div className="workspace">
-        <aside className="panel palette">
+        <aside className={'panel palette'+(illustrated?' with-art':'')}>
           <div className="panel-heading"><Layers3 size={18}/><h2>{t('rooms')}</h2><span>{listed.length}</span></div>
           <div className="palette-search"><Search size={15}/><input value={search} onChange={e=>setSearch(e.target.value)} placeholder={t('search')} aria-label={t('search')}/></div>
           <select className="group-select" aria-label={t('all')} value={group} onChange={e=>setGroup(e.currentTarget.value as Group|'all')}>
@@ -301,7 +320,9 @@ export default function App() {
               return <div className={'palette-entry'+(active?' active':'')} key={entry.id}>
                 <button className="palette-button" aria-pressed={active} draggable onDragStart={e=>startDrag(e,active?tool:current)} onDragEnd={()=>{drag.current=undefined;setHover(undefined)}}
                   onClick={()=>{setTool(active?undefined:current);setChooseOutage(false);setNotice(null)}}>
-                  <span className="room-icon" style={{color:colors[entry.group]}}><Icon size={16}/></span>
+                  <span className="room-icon" style={{color:colors[entry.group]}}>
+                    {illustrated?<Art tiles={[thumbnail(entry.id)]}/>:<Icon size={16}/>}
+                  </span>
                   <span><b>{entry[language]}</b><small>{entry.stat||t(entry.group)} · {num(entry.base,language,0)} {t('caps')}</small></span>
                   <Plus size={14} className="palette-add"/>
                 </button>
@@ -311,10 +332,12 @@ export default function App() {
           </div>
         </aside>
 
-        <section className="panel board">
+        <section className={'panel board'+(illustrated?' with-art':'')}>
           <div className="panel-heading map-heading">
             <Layers3 size={18}/><h2>{t('map')}</h2>
             <div className="map-tools">
+              <button className={'icon-button view-toggle'+(illustrated?' active':'')} aria-pressed={illustrated} aria-label={t('viewArt')} title={t(illustrated?'viewSchematic':'viewArt')}
+                onClick={()=>setView(illustrated?'schematic':'illustrated')}><ImageIcon size={16}/></button>
               <button className="icon-button" aria-label={t('undo')} title={t('undo')} disabled={!history.past.length} onClick={undo}><Undo2 size={17}/></button>
               <button className="icon-button" aria-label={t('redo')} title={t('redo')} disabled={!history.future.length} onClick={redo}><Redo2 size={17}/></button>
               <button className={'icon-button'+(tool?.kind==='rock'?' active':'')} aria-label={t('rocks')} title={t('rocks')} aria-pressed={tool?.kind==='rock'} onClick={()=>setTool(tool?.kind==='rock'?undefined:{kind:'rock'})}><Drill size={16}/></button>
@@ -332,10 +355,11 @@ export default function App() {
           </div>
           <div className="board-scroll" ref={board}>
             <div className={'map-content'+(chooseOutage&&tab==='raid'?' picking':'')}>
-              <div className="ground"><span/><span/><span/></div>
+              <div className="ground">{illustrated?<Art tiles={Array.from({length:7},()=>surface)}/>:<><span/><span/><span/></>}</div>
               {Array.from({length:FLOORS},(_,row)=> <div key={row} data-row={row} className={'floor-row'+(row===0?' surface':'')}>
                 <div className="floor-index">{String(row+1).padStart(2,'0')}</div>
                 <div className="floor-grid">
+                  {illustrated&&<Art className="earth-art" tiles={Array.from({length:9},()=>bedrock)}/>}
                   {Array.from({length:COLS},(_,col)=>{
                     const p={row,col}
                     if (!buildable(p)) return <div key={col} className="void-cell" style={{gridColumn:col+1,gridRow:1}}/>
@@ -346,7 +370,7 @@ export default function App() {
                     const filled=occupied.has(key)
                     return <button key={col} data-cell={key} tabIndex={row===0&&col===9?0:-1} aria-label={t('floor')+' '+(row+1)+' · '+(col+1)}
                       className={'grid-cell'+(rock?' rock-cell':'')+(filled?' under-room':'')+(target?(valid?' ghost':' ghost-bad'):'')}
-                      style={{gridColumn:col+1,gridRow:1}} onClick={()=>act(p)} onKeyDown={e=>keyboardStep(e,p)} onPointerEnter={()=>{if(tool)setHover(p)}}
+                      style={{gridColumn:col+1,gridRow:1,...(rock&&illustrated?tileStyle(stones):{})}} onClick={()=>act(p)} onKeyDown={e=>keyboardStep(e,p)} onPointerEnter={()=>{if(tool)setHover(p)}}
                       onDragOver={e=>{if(drag.current){e.preventDefault();setHover(p)}}} onDrop={e=>drop(e,p)}
                       title={rock?t('rock')+' · '+rockPrice(row)+' '+t('caps'):undefined}/>
                   })}
@@ -367,9 +391,10 @@ export default function App() {
                         if (tool?.kind==='move'&&tool.id===room.id&&e.detail>0) act(roomCell(e,room))
                         else pickRoom(room)
                       }} title={entry[language]}>
+                      {illustrated&&<Art tiles={roomTiles(room)}/>}
                       {lift?<span className="elevator-symbol">↕</span>:<>
-                        <span className="blueprint" aria-hidden="true"><i/><i/><i/><i/></span>
-                        <span className="room-title"><Icon size={14}/><b>{entry[language]}</b></span>
+                        {!illustrated&&<span className="blueprint" aria-hidden="true"><i/><i/><i/><i/></span>}
+                        <span className="room-title">{!illustrated&&<Icon size={14}/>}<b>{entry[language]}</b></span>
                         <span className="room-meta">L{room.level}{variant(room).workers>0?' · '+room.workers+'/'+variant(room).workers:''}{room.locked&&<Lock size={10}/>}</span>
                       </>}
                       {routeMarks&&<span className="waypoint">{routeMarks.join('·')}</span>}
@@ -382,7 +407,7 @@ export default function App() {
             </div>
           </div>
           <div className="board-footer">
-            <span>{t('mapLegend')}</span>
+            <span>{t(illustrated?'artLegend':'mapLegend')}</span>
             <button className="budget-link" onClick={()=>{
               setTab('stats')
               requestAnimationFrame(()=>document.getElementById('build-budget')?.scrollIntoView({block:'nearest'}))
@@ -397,7 +422,7 @@ export default function App() {
           </div>
           <div className="inspector-scroll">
             {tab==='stats'&&<Overview vault={vault} stats={stats} t={t} language={language} patch={patch} accept={accept} buildEstimate={buildEstimate}/>}
-            {tab==='details' && (selectedRoom ? <RoomDetails room={selectedRoom} vault={vault} t={t} language={language} accept={accept} move={()=>{setTool({kind:'move',id:selectedRoom.id});setNotice(null)}} lock={()=>patch({rooms:vault.rooms.map(r=>r.id===selectedRoom.id?{...r,locked:!r.locked}:r)})}/> : <p className="hint inset">{t('noRoom')}</p>)}
+            {tab==='details' && (selectedRoom ? <RoomDetails room={selectedRoom} view={view} vault={vault} t={t} language={language} accept={accept} move={()=>{setTool({kind:'move',id:selectedRoom.id});setNotice(null)}} lock={()=>patch({rooms:vault.rooms.map(r=>r.id===selectedRoom.id?{...r,locked:!r.locked}:r)})}/> : <p className="hint inset">{t('noRoom')}</p>)}
             {tab==='raid'&&<div>
               <Section title={t('route')}>
                 <label className="check"><input type="checkbox" checked={showRoute} onChange={e=>setShowRoute(e.target.checked)}/>{t('showRoute')}</label>
@@ -425,7 +450,7 @@ export default function App() {
       </div>
       <footer className="footer"><span>{t('estimates')}</span><a href="https://github.com/IaroslavAl/fallout-shelter-planner"><GitBranch size={14}/> GitHub</a><a href={import.meta.env.BASE_URL+'notices.txt'}>{language==='ru'?'Лицензии':'Licenses'}</a></footer>
     </main>
-    <PrintPlan vault={vault} t={t} language={language} metrics={printMetrics}/>
+    <PrintPlan vault={vault} view={view} t={t} language={language} metrics={printMetrics}/>
   </>
 }
 
@@ -476,8 +501,8 @@ function Overview({vault,stats,t,language,patch,accept,buildEstimate}:{
   </>
 }
 
-function RoomDetails({room,vault,t,language,accept,move,lock}:{
-  room:Room;vault:Vault;t:Translator;language:Language;accept:(r:EditResult)=>boolean;move:()=>void;lock:()=>void
+function RoomDetails({room,view,vault,t,language,accept,move,lock}:{
+  room:Room;view:View;vault:Vault;t:Translator;language:Language;accept:(r:EditResult)=>boolean;move:()=>void;lock:()=>void
 }) {
   const entry=byType[room.type]
   const data=variant(room)
@@ -485,6 +510,7 @@ function RoomDetails({room,vault,t,language,accept,move,lock}:{
   const fixed=room.type==='Entrance'
   return <>
     <Section title={entry[language]}>
+      {view==='illustrated'&&<div className="room-preview"><Art tiles={roomTiles(room)}/></div>}
       <Row label={t('floor')}>{room.row+1}</Row>
       <Row label={t('minimum')}>{entry.unlock}</Row>
       {entry.stat&&<Row label="SPECIAL">{entry.stat}</Row>}
@@ -518,14 +544,17 @@ function RoomDetails({room,vault,t,language,accept,move,lock}:{
     </Section>}
   </>
 }
-function PrintPlan({vault,t,language,metrics}:{vault:Vault;t:Translator;language:Language;metrics:string[]}){
+function PrintPlan({vault,view,t,language,metrics}:{vault:Vault;view:View;t:Translator;language:Language;metrics:string[]}){
   const rows=Math.max(0,...vault.rooms.map(r=>r.row),...vault.rocks.map(r=>r.row))+1
-  return <section className="print-plan">
+  const illustrated=view==='illustrated'
+  return <section className={'print-plan'+(illustrated?' with-art':'')}>
     <h1>{t('title')} · {t('planner')}</h1>
     {metrics.map(line=><p key={line}>{line}</p>)}
     {Array.from({length:rows},(_,row)=><div className="print-row" key={row}>
       <b>{row+1}</b><div className="print-grid">
-        {vault.rooms.filter(r=>r.row===row).map(r=><div key={r.id} style={{gridColumn:(r.col+1)+' / span '+width(r),gridRow:1,borderColor:colors[byType[r.type].group]}}>{r.type==='Elevator'?'↕':byType[r.type][language]+' L'+r.level}</div>)}
+        {vault.rooms.filter(r=>r.row===row).map(r=><div className="printed-room" key={r.id} style={{gridColumn:(r.col+1)+' / span '+width(r),gridRow:1,borderColor:colors[byType[r.type].group]}}>
+          {illustrated&&<Art tiles={roomTiles(r)}/>}<span>{r.type==='Elevator'?'↕':byType[r.type][language]+' L'+r.level}</span>
+        </div>)}
         {vault.rocks.filter(r=>r.row===row).map(r=><div key={r.col} style={{gridColumn:(r.col+1)+' / span 3',gridRow:1}}>{t('rocks')}</div>)}
       </div>
     </div>)}

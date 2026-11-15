@@ -31,4 +31,4 @@ npx playwright install chromium webkit
 npm run test:e2e
 ```
 
-Room graphics are original CSS schematics with [Lucide icons](https://lucide.dev/license). Fonts are self-hosted via Fontsource.
+The map opens in illustrated view. Use the image button on the map toolbar to switch to the schematic. [Room artwork and prompts](docs/art.md). The schematic uses [Lucide icons](https://lucide.dev/license). Fonts are self-hosted via Fontsource.

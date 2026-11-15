@@ -1,3 +1,4 @@
+import { loadArt, paintTiles, roomTiles, stones, type View } from './roomArt'
 import { deflateSync, inflateSync, strFromU8, strToU8 } from 'fflate'
 import { byType, buildable, canPlace, contains, FLOORS, RULES, variant, width, type Vault } from './model'
 
@@ -104,12 +105,16 @@ export function saveFile(data: Blob, name: string) {
   setTimeout(() => URL.revokeObjectURL(url), 10_000)
 }
 
-export function exportPNG(vault: Vault, heading: string, metrics: string[], language: 'en'|'ru', legend: string[]) {
+export async function exportPNG(vault: Vault, heading: string, metrics: string[], language: 'en'|'ru', legend: string[], view: View) {
+  const illustrated = view === 'illustrated'
+  const tiles = illustrated ? vault.rooms.flatMap(roomTiles) : []
+  if (illustrated && vault.rocks.length) tiles.push(stones)
+  const assets = await loadArt(tiles)
   const floors = Math.max(0,...vault.rooms.map(r=>r.row),...vault.rocks.map(r=>r.row))+1
   const pad = 40
   const top = 158
   const unit = 38
-  const rowHeight = 62
+  const rowHeight = illustrated ? 84 : 62
   const canvas = document.createElement('canvas')
   canvas.width = 2*(26*unit+2*pad)
   canvas.height = 2*(top+rowHeight*floors+pad+66)
@@ -132,7 +137,10 @@ export function exportPNG(vault: Vault, heading: string, metrics: string[], lang
   }
   for (const rock of vault.rocks) {
     ctx.fillStyle='#64594a'
-    ctx.fillRect(pad+rock.col*unit+2,top+rock.row*rowHeight+3,3*unit-4,rowHeight-8)
+    const x = pad + rock.col * unit + 2
+    const y = top + rock.row * rowHeight + 3
+    ctx.fillRect(x,y,3*unit-4,rowHeight-8)
+    if (illustrated) paintTiles(ctx,assets,[stones],x,y,3*unit-4,rowHeight-8)
   }
   for (const room of vault.rooms) {
     const type = byType[room.type]
@@ -141,14 +149,28 @@ export function exportPNG(vault: Vault, heading: string, metrics: string[], lang
     const y = top + room.row * rowHeight + 3
     ctx.fillStyle = '#303930'
     ctx.fillRect(x,y,roomWidth-4,rowHeight-8)
+    const art = illustrated && paintTiles(ctx, assets, roomTiles(room), x, y, roomWidth-4, rowHeight-8)
+    if (art && room.type !== 'Elevator') {
+      const shade = ctx.createLinearGradient(0,y+rowHeight-40,0,y+rowHeight-7)
+      shade.addColorStop(0,'#0c0c0800')
+      shade.addColorStop(1,'#0c0c08ec')
+      ctx.fillStyle = shade
+      ctx.fillRect(x,y+rowHeight-40,roomWidth-4,32)
+    }
     ctx.strokeStyle = colors[type.group]
     ctx.strokeRect(x+.5,y+.5,roomWidth-5,rowHeight-9)
-    ctx.fillStyle = colors[type.group]
-    ctx.font = room.type==='Elevator'?'15px monospace':'bold 14px system-ui'
-    ctx.fillText(room.type==='Elevator'?'↕':type[language],x+7,y+21,roomWidth-16)
-    if (room.type!=='Elevator') {
+    ctx.fillStyle = art ? '#fff5dd' : colors[type.group]
+    if (room.type === 'Elevator') {
+      if (!art) {
+        ctx.font = '15px monospace'
+        ctx.fillText('↕',x+7,y+21,roomWidth-16)
+      }
+    } else {
+      const titleY = art ? y+rowHeight-25 : y+21
+      ctx.font = 'bold 14px system-ui'
+      ctx.fillText(type[language],x+7,titleY,roomWidth-16)
       ctx.font = '11px monospace'
-      ctx.fillText('L'+room.level+(variant(room).workers?'  ·  '+room.workers+'/'+variant(room).workers:''),x+7,y+40,roomWidth-16)
+      ctx.fillText('L'+room.level+(variant(room).workers?'  ·  '+room.workers+'/'+variant(room).workers:''),x+7,titleY+13,roomWidth-16)
     }
   }
   ctx.font = '13px system-ui'
