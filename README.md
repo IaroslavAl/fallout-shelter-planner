@@ -9,3 +9,26 @@
 - [Реестр источников](docs/data.md)
 
 Это независимый фанатский проект. Fallout Shelter принадлежит Bethesda.
+
+[Открыть конструктор / Open the planner](https://iaroslaval.github.io/fallout-shelter-planner/)
+
+Выберите демонстрационную схему или чистое убежище, затем выберите комнату и свободную клетку. На компьютере комнату можно перетащить мышью. Работники и улучшения меняются на вкладке «Комната». В смете включается режим проверки последовательной перестройки, а на вкладке «Нападение» можно отключить несколько комнат и проверить запас. Ссылка открывает редактируемую копию, JSON даёт переносимый резервный файл.
+
+## English
+
+A browser vault planner for Fallout Shelter on PS5, Normal mode. Build a layout, set workers and Mr. Handy floors, compare resources against demand, and test a temporary production outage. Share an editable link or export PNG, print PDF, or JSON. Public tables and measurements inform the model. Some estimates still need a PS5 spot check. [Data and limitations](docs/data.md)
+
+## Local development
+
+Use Node.js 24 and npm. Commands:
+
+```sh
+npm ci
+npm run dev
+npm test
+npm run build
+npx playwright install chromium webkit
+npm run test:e2e
+```
+
+Room graphics are original CSS schematics with [Lucide icons](https://lucide.dev/license). Fonts are self-hosted via Fontsource.
