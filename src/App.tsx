@@ -1,9 +1,10 @@
-import { useEffect, useMemo, useRef, useState, type CSSProperties, type DragEvent, type KeyboardEvent, type MouseEvent, type ReactNode } from 'react'
-import { ArrowDownToLine, ArrowUpRight, Bot, Cross, Droplet, Drill, Dumbbell, GitBranch, Image as ImageIcon, Layers3, Link2, Lock, Move, Package, Plus, Redo2, Search, Shield, Trash2, Undo2, Unlock, Users, Utensils, X, Zap } from 'lucide-react'
+import { useEffect, useMemo, useRef, useState, type CSSProperties, type KeyboardEvent, type MouseEvent, type ReactNode } from 'react'
+import { ArrowDownToLine, ArrowUpRight, Bot, Cross, Droplet, Drill, Dumbbell, GitBranch, GripVertical, Image as ImageIcon, Layers3, Link2, Lock, Move, Package, Plus, Redo2, Search, Shield, Trash2, Undo2, Unlock, Users, Utensils, X, Zap } from 'lucide-react'
 import { buildable, byType, catalog, cellKey, COLS, contains, editRoom, example, FLOORS, newBuildCost, nextId, outage, raidRoute, removeRoom, resources, rockPrice, roomRate, startRemodel, summarize, toggleRock, variant, width, type EditResult, type Essential, type Failure, type Group, type Language, type Point, type Resource, type Room, type Vault } from './model'
 import { colors, exportPNG, legendGroups, hasPlan, num, parseFragment, planFragment, planJSON, readPlan, saveFile } from './portable'
 import { messages, type Label } from './i18n'
-import { bedrock, roomTiles, stones, surface, thumbnail, tileStyle, type View } from './roomArt'
+import { useRoomDrag } from './gridDrag'
+import { bedrock, roomImage, stones, surface, type View } from './roomArt'
 
 const baseResources = ['power','food','water'] as const
 const icons = {power:Zap,food:Utensils,water:Droplet,housing:Users,storage:Package,utility:Layers3,medicine:Cross,craft:Drill,training:Dumbbell,nuka:Droplet}
@@ -30,14 +31,13 @@ function preferredView(): View {
   return 'illustrated'
 }
 
-function Art({tiles,className=''}:{tiles:ReturnType<typeof roomTiles>;className?:string}) {
-  return <span className={'room-art '+className} aria-hidden="true">
-    {tiles.map((tile, index)=><span key={index} style={tileStyle(tile)}/>)}
-  </span>
+function Art({image}:{image:string}) {
+  return <span className="room-art" aria-hidden="true"><img src={image} alt="" draggable={false}/></span>
 }
 
 type History = {past:Vault[]; vault:Vault; future:Vault[]}
-type Tool = {kind:'place'; type:string; sections:number} | {kind:'move'; id:number} | {kind:'rock'}
+type RoomTool = {kind:'place'; type:string; sections:number} | {kind:'move'; id:number}
+type Tool = RoomTool | {kind:'rock'}
 type Tab = 'stats'|'details'|'raid'
 type Translator = (key:Label)=>string
 function NumberField({label,value,min=0,max,onChange,placeholder,step=1}:{
@@ -93,7 +93,6 @@ export default function App() {
   const [chooseOutage,setChooseOutage]=useState(false)
   const file=useRef<HTMLInputElement>(null)
   const board=useRef<HTMLDivElement>(null)
-  const drag=useRef<Tool>(undefined)
   const stats=useMemo(()=>summarize(vault),[vault])
   const route=useMemo(()=>raidRoute(vault.rooms),[vault.rooms])
   const stress=useMemo(()=>outage(vault,stats),[vault,stats])
@@ -129,9 +128,25 @@ export default function App() {
   useEffect(()=>{
     try { localStorage.setItem('planner-view',view) } catch { /* Optional preference. */ }
   },[view])
+  const roomDrag = useRoomDrag<RoomTool>(board,
+    (point, mode) => {
+      const room = candidate(point, mode)
+      return !!room && 'vault' in editRoom(vault, room)
+    },
+    (point, mode, valid) => {
+      if (valid) {
+        setTool(undefined)
+        setHover(undefined)
+        setChooseOutage(false)
+        act(point, mode)
+      } else setNotice('placement')
+    },
+    mode => mode.kind === 'move',
+  )
+  const preview = roomDrag.preview
   useEffect(()=>{
     const listener=(event:globalThis.KeyboardEvent)=>{
-      if (event.key==='Escape') { setTool(undefined); setHover(undefined); setChooseOutage(false);setExportOpen(false) }
+      if (event.key==='Escape') { roomDrag.stop(true); setTool(undefined); setHover(undefined); setChooseOutage(false);setExportOpen(false) }
       if ((event.ctrlKey||event.metaKey) && event.key.toLowerCase()==='z' && !(event.target instanceof HTMLInputElement)) {
         event.preventDefault()
         if (event.shiftKey) redo()
@@ -197,19 +212,6 @@ export default function App() {
     const grid=event.currentTarget.parentElement!.getBoundingClientRect()
     const col=Math.floor((event.clientX-grid.left)*COLS/grid.width)
     return {row:room.row,col:Math.max(room.col,Math.min(room.col+width(room)-1,col))}
-  }
-  function startDrag(event:DragEvent,current:Tool) {
-    drag.current=current
-    setTool(current)
-    event.dataTransfer.setData('text/plain','vault-room')
-    event.dataTransfer.effectAllowed=current.kind==='move'?'move':'copy'
-  }
-  function drop(event:DragEvent,p:Point) {
-    if (!drag.current) return
-    event.preventDefault()
-    act(p,drag.current)
-    drag.current=undefined
-    setHover(undefined)
   }
   const template=(choice:'starter'|'large'|'blank')=>{
     if ((history.past.length || hasPlan(window.location.hash)) && !window.confirm(t('replace'))) return
@@ -305,7 +307,8 @@ export default function App() {
         {shareLink?<label>{t('copyManual')}<input readOnly value={shareLink} onFocus={e=>e.currentTarget.select()}/></label>:notice && (typeof notice==='string'?t(notice):fault(notice.error,t))}
         <button className="icon-button" aria-label={t('close')} onClick={()=>{setNotice(null);setShareLink(undefined)}}><X size={16}/></button>
       </div>}
-      <div className="workspace">
+      <div className={'workspace'+(preview?' dragging':'')} onClickCapture={roomDrag.suppressClick}
+        onPointerMove={roomDrag.move} onPointerUp={roomDrag.finish} onPointerCancel={roomDrag.cancel} onLostPointerCapture={roomDrag.cancel}>
         <aside className={'panel palette'+(illustrated?' with-art':'')}>
           <div className="panel-heading"><Layers3 size={18}/><h2>{t('rooms')}</h2><span>{listed.length}</span></div>
           <div className="palette-search"><Search size={15}/><input value={search} onChange={e=>setSearch(e.target.value)} placeholder={t('search')} aria-label={t('search')}/></div>
@@ -316,15 +319,19 @@ export default function App() {
             {listed.map(entry=>{
               const Icon=icons[entry.group]
               const active=tool?.kind==='place'&&tool.type===entry.id
-              const current:Tool={kind:'place',type:entry.id,sections:entry.widths[0]}
+              const current:RoomTool={kind:'place',type:entry.id,sections:entry.widths[0]}
               return <div className={'palette-entry'+(active?' active':'')} key={entry.id}>
-                <button className="palette-button" aria-pressed={active} draggable onDragStart={e=>startDrag(e,active?tool:current)} onDragEnd={()=>{drag.current=undefined;setHover(undefined)}}
-                  onClick={()=>{setTool(active?undefined:current);setChooseOutage(false);setNotice(null)}}>
+                <button className="palette-button" aria-pressed={active} onPointerDown={e=>{
+                  const mode=active?tool:current
+                  const room=candidate({row:0,col:0},mode)
+                  if (room) roomDrag.begin(e,mode,room)
+                }} onClick={()=>{setTool(active?undefined:current);setChooseOutage(false);setNotice(null)}}>
                   <span className="room-icon" style={{color:colors[entry.group]}}>
-                    {illustrated?<Art tiles={[thumbnail(entry.id)]}/>:<Icon size={16}/>}
+                    {illustrated?<Art image={roomImage({type:entry.id,sections:active?tool.sections:entry.widths[0]})}/>:<Icon size={16}/>}
                   </span>
                   <span><b>{entry[language]}</b><small>{entry.stat||t(entry.group)} · {num(entry.base,language,0)} {t('caps')}</small></span>
-                  <Plus size={14} className="palette-add"/>
+                  <span className="palette-add" aria-hidden="true"><Plus size={14}/></span>
+                  <span className="palette-grip" data-room-grip aria-hidden="true"><GripVertical size={16}/></span>
                 </button>
                 {active && entry.widths.length>1 && <div className="width-pick"><span>{t('width')}</span>{entry.widths.map(sections=><button key={sections} aria-label={sections+' '+t('unit')} aria-pressed={tool.sections===sections} onClick={()=>setTool({...current,sections})}>{sections}</button>)}</div>}
               </div>
@@ -354,24 +361,22 @@ export default function App() {
             <b>{fits===null?freeCells+' '+t('cells'):fits.size+' '+t('fits')}</b>
           </div>
           <div className="board-scroll" ref={board}>
-            <div className={'map-content'+(chooseOutage&&tab==='raid'?' picking':'')}>
-              <div className="ground">{illustrated?<Art tiles={Array.from({length:7},()=>surface)}/>:<><span/><span/><span/></>}</div>
+            <div className={'map-content'+(chooseOutage&&tab==='raid'?' picking':'')} style={illustrated?{backgroundImage:'url('+bedrock+')'}:undefined}>
+              <div className="ground">{illustrated?<Art image={surface}/>:<><span/><span/><span/></>}</div>
               {Array.from({length:FLOORS},(_,row)=> <div key={row} data-row={row} className={'floor-row'+(row===0?' surface':'')}>
                 <div className="floor-index">{String(row+1).padStart(2,'0')}</div>
-                <div className="floor-grid">
-                  {illustrated&&<Art className="earth-art" tiles={Array.from({length:9},()=>bedrock)}/>}
+                <div className="floor-grid" data-floor-grid>
                   {Array.from({length:COLS},(_,col)=>{
                     const p={row,col}
                     if (!buildable(p)) return <div key={col} className="void-cell" style={{gridColumn:col+1,gridRow:1}}/>
                     const key=cellKey(p)
                     const rock=rockCells.has(key)
-                    const target=tool&&tool.kind!=='rock'&&hover?.row===row&&ghost&&col>=ghost.col&&col<ghost.col+width(ghost)
+                    const target=!preview&&tool&&tool.kind!=='rock'&&hover?.row===row&&ghost&&col>=ghost.col&&col<ghost.col+width(ghost)
                     const valid=target&&ghost&&fits?.has(cellKey(ghost))
                     const filled=occupied.has(key)
                     return <button key={col} data-cell={key} tabIndex={row===0&&col===9?0:-1} aria-label={t('floor')+' '+(row+1)+' · '+(col+1)}
                       className={'grid-cell'+(rock?' rock-cell':'')+(filled?' under-room':'')+(target?(valid?' ghost':' ghost-bad'):'')}
-                      style={{gridColumn:col+1,gridRow:1,...(rock&&illustrated?tileStyle(stones):{})}} onClick={()=>act(p)} onKeyDown={e=>keyboardStep(e,p)} onPointerEnter={()=>{if(tool)setHover(p)}}
-                      onDragOver={e=>{if(drag.current){e.preventDefault();setHover(p)}}} onDrop={e=>drop(e,p)}
+                      style={{gridColumn:col+1,gridRow:1,...(rock&&illustrated?{backgroundImage:'url('+stones+')'}:{})}} onClick={()=>act(p)} onKeyDown={e=>keyboardStep(e,p)} onPointerEnter={()=>{if(tool)setHover(p)}}
                       title={rock?t('rock')+' · '+rockPrice(row)+' '+t('caps'):undefined}/>
                   })}
                   {vault.rooms.filter(r=>r.row===row).map(room=>{
@@ -382,24 +387,30 @@ export default function App() {
                     const disabled=room.type==='Entrance'||room.locked
                     return <button key={room.id} data-room-id={room.id} aria-pressed={tab==='raid'&&chooseOutage?vault.offline.includes(room.id):selection===room.id}
                       aria-label={lift?t('floor')+' '+(row+1)+' · '+entry[language]+' '+(room.col+1):entry[language]+' · '+t('floor')+' '+(row+1)}
-                      className={'map-room '+entry.group+(lift?' elevator':'')+(room.type==='Entrance'?' entrance':'')+(selection===room.id?' selected':'')+(!stats.available.has(room.id)?' severed':'')+(routeMarks?' route-room':'')+(vault.offline.includes(room.id)&&tab==='raid'?' offline':'')}
+                      className={'map-room '+entry.group+(lift?' elevator':'')+(room.type==='Entrance'?' entrance':'')+(selection===room.id?' selected':'')+(preview?.movingId===room.id?' drag-origin':'')+(!stats.available.has(room.id)?' severed':'')+(routeMarks?' route-room':'')+(vault.offline.includes(room.id)&&tab==='raid'?' offline':'')}
                       style={{gridColumn:(room.col+1)+' / span '+width(room),gridRow:1,'--room':colors[entry.group]} as CSSProperties}
-                      draggable={!disabled&&!chooseOutage} onDragStart={e=>startDrag(e,{kind:'move',id:room.id})} onDragEnd={()=>{drag.current=undefined;setHover(undefined)}}
-                      onDragOver={e=>{if(drag.current){e.preventDefault();setHover(roomCell(e,room))}}}
-                      onDrop={e=>drop(e,roomCell(e,room))}
+                      onPointerDown={e=>{if (!disabled&&!chooseOutage) roomDrag.begin(e,{kind:'move',id:room.id},room)}}
                       onClick={e=>{
                         if (tool?.kind==='move'&&tool.id===room.id&&e.detail>0) act(roomCell(e,room))
                         else pickRoom(room)
                       }} title={entry[language]}>
-                      {illustrated&&<Art tiles={roomTiles(room)}/>}
+                      {illustrated&&<Art image={roomImage(room)}/>}
                       {lift?<span className="elevator-symbol">↕</span>:<>
                         {!illustrated&&<span className="blueprint" aria-hidden="true"><i/><i/><i/><i/></span>}
                         <span className="room-title">{!illustrated&&<Icon size={14}/>}<b>{entry[language]}</b></span>
                         <span className="room-meta">L{room.level}{variant(room).workers>0?' · '+room.workers+'/'+variant(room).workers:''}{room.locked&&<Lock size={10}/>}</span>
                       </>}
+                      {!disabled&&!chooseOutage&&<span className="room-grip" data-room-grip aria-hidden="true"><GripVertical size={13}/></span>}
                       {routeMarks&&<span className="waypoint">{routeMarks.join('·')}</span>}
                     </button>
                   })}
+                  {preview?.landing?.point.row===row&&<div
+                    className={'drop-preview'+(preview.landing.valid?' valid':' invalid')}
+                    data-drop-row={row} data-drop-col={preview.landing.point.col}
+                    style={{gridColumn:(preview.landing.point.col+1)+' / span '+Math.min(width(preview.room),COLS-preview.landing.point.col),gridRow:1}} aria-hidden="true">
+                    {illustrated&&<Art image={roomImage(preview.room)}/>}
+                    <span className="drop-label">{byType[preview.room.type][language]}</span>
+                  </div>}
                 </div>
                 <button className={'floor-bot'+(vault.handyFloors.includes(row)?' active':'')} aria-pressed={vault.handyFloors.includes(row)}
                   aria-label={t('helper')+' · '+t('floor')+' '+(row+1)} title={t('selectHandy')} onClick={()=>assign(row)}><Bot size={16}/></button>
@@ -448,6 +459,11 @@ export default function App() {
           </div>
         </aside>
       </div>
+      {preview&&!preview.landing&&<div className="drop-preview floating" aria-hidden="true"
+        style={{left:preview.cursor.x-preview.offset.x,top:preview.cursor.y-preview.offset.y,width:preview.size.width,height:preview.size.height}}>
+        {illustrated&&<Art image={roomImage(preview.room)}/>}
+        <span className="drop-label">{byType[preview.room.type][language]}</span>
+      </div>}
       <footer className="footer"><span>{t('estimates')}</span><a href="https://github.com/IaroslavAl/fallout-shelter-planner"><GitBranch size={14}/> GitHub</a><a href={import.meta.env.BASE_URL+'notices.txt'}>{language==='ru'?'Лицензии':'Licenses'}</a></footer>
     </main>
     <PrintPlan vault={vault} view={view} t={t} language={language} metrics={printMetrics}/>
@@ -510,7 +526,7 @@ function RoomDetails({room,view,vault,t,language,accept,move,lock}:{
   const fixed=room.type==='Entrance'
   return <>
     <Section title={entry[language]}>
-      {view==='illustrated'&&<div className="room-preview"><Art tiles={roomTiles(room)}/></div>}
+      {view==='illustrated'&&<div className="room-preview"><Art image={roomImage(room)}/></div>}
       <Row label={t('floor')}>{room.row+1}</Row>
       <Row label={t('minimum')}>{entry.unlock}</Row>
       {entry.stat&&<Row label="SPECIAL">{entry.stat}</Row>}
@@ -553,7 +569,7 @@ function PrintPlan({vault,view,t,language,metrics}:{vault:Vault;view:View;t:Tran
     {Array.from({length:rows},(_,row)=><div className="print-row" key={row}>
       <b>{row+1}</b><div className="print-grid">
         {vault.rooms.filter(r=>r.row===row).map(r=><div className="printed-room" key={r.id} style={{gridColumn:(r.col+1)+' / span '+width(r),gridRow:1,borderColor:colors[byType[r.type].group]}}>
-          {illustrated&&<Art tiles={roomTiles(r)}/>}<span>{r.type==='Elevator'?'↕':byType[r.type][language]+' L'+r.level}</span>
+          {illustrated&&<Art image={roomImage(r)}/>}<span>{r.type==='Elevator'?'↕':byType[r.type][language]+' L'+r.level}</span>
         </div>)}
         {vault.rocks.filter(r=>r.row===row).map(r=><div key={r.col} style={{gridColumn:(r.col+1)+' / span 3',gridRow:1}}>{t('rocks')}</div>)}
       </div>

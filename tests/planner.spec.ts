@@ -1,5 +1,5 @@
 import { readFile } from 'node:fs/promises'
-import { expect, test } from '@playwright/test'
+import { devices, expect, test } from '@playwright/test'
 import { example } from '../src/model'
 import { planFragment } from '../src/portable'
 
@@ -78,7 +78,13 @@ test('drag the selected width from the palette onto the map',async ({page,baseUR
   await page.getByRole('button',{name:'2 sections',exact:true}).click()
   const cell=page.getByRole('button',{name:'Floor 4 · 11',exact:true})
   await cell.scrollIntoViewIfNeeded()
-  await generator.dragTo(cell)
+  const source=(await generator.boundingBox())!
+  const target=(await cell.boundingBox())!
+  await page.mouse.move(source.x+source.width/2,source.y+source.height/2)
+  await page.mouse.down()
+  await page.mouse.move(target.x+target.width/2,target.y+target.height/2,{steps:8})
+  await expect(page.locator('[data-drop-row="3"][data-drop-col="10"]')).toHaveClass(/valid/)
+  await page.mouse.up()
   const room=page.getByRole('button',{name:'Power Generator · Floor 4',exact:true})
   await expect(room).toBeVisible()
   await expect(room).toHaveCSS('grid-column-end','span 6')
@@ -90,13 +96,10 @@ test('loads illustrated rooms and switches back to the schematic without editing
   const view=page.getByRole('button',{name:'Illustrated view',exact:true})
   const generator=board.getByRole('button',{name:'Power Generator · Floor 2',exact:true})
   await expect(view).toHaveAttribute('aria-pressed','true')
-  await expect(generator.locator('.room-art > span')).toHaveCount(1)
-  const loaded=await generator.locator('.room-art > span').evaluate(async tile=>{
-    const url=getComputedStyle(tile).backgroundImage.slice(5,-2)
-    const image=new Image()
-    image.src=url
-    await image.decode()
-    return image.naturalWidth
+  await expect(generator.locator('.room-art img')).toHaveCount(1)
+  const loaded=await generator.locator('.room-art img').evaluate(async image=>{
+    await (image as HTMLImageElement).decode()
+    return (image as HTMLImageElement).naturalWidth
   })
   expect(loaded).toBeGreaterThan(0)
   const balance=await page.locator('.metrics').textContent()
@@ -108,4 +111,53 @@ test('loads illustrated rooms and switches back to the schematic without editing
   await expect(view).toHaveAttribute('aria-pressed','false')
   await view.click()
   await expect(generator.locator('.room-art')).toHaveCount(1)
+})
+
+test('moves a room from its grab point onto the exact displayed destination',async ({page,baseURL,isMobile})=>{
+  test.skip(isMobile,'Mouse-specific grab test.')
+  await page.goto(baseURL!)
+  const room=page.getByRole('button',{name:'Science Lab · Floor 1',exact:true})
+  const cell=page.getByRole('button',{name:'Floor 4 · 17',exact:true})
+  await cell.scrollIntoViewIfNeeded()
+  const target=(await cell.boundingBox())!
+  const source=(await room.boundingBox())!
+  await page.mouse.move(source.x+target.width*2.5,source.y+source.height/2)
+  await page.mouse.down()
+  await page.mouse.move(target.x+target.width/2,target.y+target.height/2,{steps:10})
+  await expect(page.locator('[data-drop-row="3"][data-drop-col="14"]')).toHaveClass(/valid/)
+  await page.mouse.up()
+  await expect(page.getByRole('button',{name:'Science Lab · Floor 4',exact:true})).toHaveCSS('grid-column-start','15')
+  await expect(room).toHaveCount(0)
+})
+
+test('drags a room from its grip with a touch pointer',async ({browser,browserName,baseURL})=>{
+  test.skip(browserName!=='chromium','Chromium CDP drives touch movements. WebKit tap placement is tested separately.')
+  const context=await browser.newContext({...devices['Pixel 7'],locale:'en-US'})
+  try {
+    const page=await context.newPage()
+    await page.goto(baseURL!)
+    const scroll=page.locator('.board-scroll')
+    await scroll.evaluate(element=>element.scrollIntoView({block:'center'}))
+    const room=page.getByRole('button',{name:'Power Generator · Floor 2',exact:true})
+    const grip=room.locator('[data-room-grip]')
+    const cell=page.getByRole('button',{name:'Floor 4 · 11',exact:true})
+    await expect(grip).toBeVisible()
+    const target=(await cell.boundingBox())!
+    const source=(await grip.boundingBox())!
+    const touch=await context.newCDPSession(page)
+    const start={x:source.x+source.width/2,y:source.y+source.height/2}
+    const end={x:target.x+target.width/2,y:target.y+target.height/2}
+    await touch.send('Input.dispatchTouchEvent',{type:'touchStart',touchPoints:[start]})
+    for(let step=1;step<=10;step++) {
+      await touch.send('Input.dispatchTouchEvent',{type:'touchMove',touchPoints:[{
+        x:start.x+(end.x-start.x)*step/10,y:start.y+(end.y-start.y)*step/10,
+      }]})
+    }
+    const preview=page.locator('.drop-preview.valid[data-drop-row="3"]')
+    await expect(preview).toBeVisible()
+    const expected=Number(await preview.getAttribute('data-drop-col'))
+    await touch.send('Input.dispatchTouchEvent',{type:'touchEnd',touchPoints:[]})
+    await expect(page.getByRole('button',{name:'Power Generator · Floor 4',exact:true})).toHaveCSS('grid-column-start',String(expected+1))
+    await expect(room).toHaveCount(0)
+  } finally { await context.close() }
 })

@@ -267,17 +267,21 @@ html[lang='ru'] .intro h1 em { font-size: .72em; font-weight: 760; letter-spacin
   display:flex;
   pointer-events:none;
 }
-.room-art > span {
-  flex:1 1 0;
-  background-repeat:no-repeat;
-}
+.room-art img { display:block; width:100%; height:100%; object-fit:cover; }
+
 .palette.with-art .palette-button { grid-template-columns:37px minmax(0,1fr) 13px; }
 .palette.with-art .room-icon { position:relative; width:36px; height:26px; overflow:hidden; border-color:#5b5645; }
 .palette.with-art .palette-entry.active .room-icon { border-color:var(--green); }
 .board.with-art .board-scroll { background:#171711; }
-.board.with-art .map-content { min-width:610px; }
+.board.with-art .map-content {
+  min-width:610px;
+  background-color:#1a1510;
+  background-repeat:repeat-y;
+  background-size:100% auto;
+  background-blend-mode:soft-light;
+}
 .board.with-art .ground {
-  height:31px;
+  height:49px;
   position:relative;
   overflow:hidden;
   margin-top:0;
@@ -285,11 +289,9 @@ html[lang='ru'] .intro h1 em { font-size: .72em; font-weight: 760; letter-spacin
   border-bottom:2px solid #826946;
   background:#5a422b;
 }
-.board.with-art .ground > .room-art { width:auto; height:70px; margin:0; top:-4px; bottom:auto; background:none; }
-.board.with-art .ground > .room-art > span { opacity:.73; }
+.board.with-art .ground .room-art img { object-position:center 31%; }
 .board.with-art .floor-row { min-height:86px; }
 .board.with-art .floor-grid { grid-template-rows:82px; isolation:isolate; }
-.earth-art { z-index:-2; filter:brightness(.76); }
 .board.with-art .grid-cell, .board.with-art .void-cell {
   background-color:#1c160d26;
   border-color:#c2a17b19;
@@ -308,6 +310,7 @@ html[lang='ru'] .intro h1 em { font-size: .72em; font-weight: 760; letter-spacin
 .board.with-art .rock-cell {
   background-color:#6a4931;
   background-repeat:no-repeat;
+  background-size:cover;
   border-color:#bf98606e;
 }
 .board.with-art .rock-cell:hover { box-shadow:inset 0 0 0 2px #e5b66fde; }
@@ -315,7 +318,8 @@ html[lang='ru'] .intro h1 em { font-size: .72em; font-weight: 760; letter-spacin
   border:1px solid #625c49;
   border-bottom:2px solid color-mix(in srgb,var(--room) 68%,#433419);
   border-radius:2px;
-  margin:0 1px 0 0;
+  margin:1px 3px 1px 1px;
+  box-shadow:0 0 0 1px #150f07;
   padding:3px 5px;
   justify-content:flex-end;
   gap:1px;
@@ -341,13 +345,20 @@ html[lang='ru'] .intro h1 em { font-size: .72em; font-weight: 760; letter-spacin
 .board.with-art .room-title, .board.with-art .room-meta { position:relative; z-index:1; }
 .board.with-art .room-title b { color:#fff3d6; font-size:10px; }
 .board.with-art .room-meta { color:#e6d9ba; font-size:8px; }
-.board.with-art .map-room.elevator > .room-art {
-  left:50%;
-  right:auto;
-  width:59px;
-  transform:translateX(-50%);
+.board.with-art .map-room.elevator {
+  border:1px solid #b4a181;
+  border-top:2px solid #d4bf99;
+  border-bottom:3px solid #9d8764;
+  box-shadow:0 0 0 1px #100c06, inset 0 0 0 1px #130e0a;
+  margin:1px 4px 1px 2px;
 }
-.board.with-art .map-room.elevator .elevator-symbol { visibility:hidden; }
+.board.with-art .map-room.elevator:hover, .board.with-art .map-room.elevator.selected {
+  border-color:#dfedaa;
+}
+.board.with-art .map-room.elevator .elevator-symbol {
+  z-index:1; line-height:1; color:#fcf1d3;
+  text-shadow:0 1px 2px #000, 0 -1px 2px #000; font-size:11px;
+}
 .board.with-art .map-room.elevator::before { display:none; }
 .board.with-art .waypoint { z-index:2; }
 .room-preview {
@@ -360,9 +371,9 @@ html[lang='ru'] .intro h1 em { font-size: .72em; font-weight: 760; letter-spacin
   background:#2e2a1e;
 }
 @media(max-width:650px) {
-  .board.with-art .map-content { min-width:570px; }
-  .board.with-art .floor-row { min-height:76px; }
-  .board.with-art .floor-grid { grid-template-rows:72px; }
+  .board.with-art .map-content { min-width:630px; }
+  .board.with-art .floor-row { min-height:68px; }
+  .board.with-art .floor-grid { grid-template-rows:64px; }
 }
 @media print {
   .print-plan.with-art .print-grid { grid-template-rows:minmax(53px,auto); }
@@ -377,4 +388,81 @@ html[lang='ru'] .intro h1 em { font-size: .72em; font-weight: 760; letter-spacin
     position:relative; border-radius:2px; padding:1px 2px;
     background:#14100dcc;
   }
+}
+
+.workspace .panel-heading, .workspace .tabs {
+  background:linear-gradient(180deg,#302f24,#22251d);
+  border-bottom-color:#504934;
+}
+.board.with-art {
+  border-color:#5b4e34;
+  box-shadow:0 2px 8px #0e0c07;
+}
+.board.with-art .board-scroll { border-color:#695432; }
+.board.with-art .floor-index { color:#cfbc93; }
+.board.with-art .floor-bot.active { color:#d0e5ab; background:#38462a; }
+.palette-add, .palette-grip { display:grid; place-items:center; }
+.palette-grip, .room-grip { display:none; }
+.palette-button, .map-room { user-select:none; }
+.map-room.drag-origin { opacity:.4; }
+.workspace.dragging, .workspace.dragging button { cursor:grabbing; }
+.drop-preview {
+  display:flex;
+  position:relative;
+  align-items:flex-end;
+  isolation:isolate;
+  z-index:5;
+  overflow:hidden;
+  min-width:0;
+  padding:4px 6px;
+  border:2px solid #d8f2a4;
+  border-radius:3px;
+  margin:1px 2px 1px 1px;
+  background:#354c28;
+  box-shadow:0 0 0 1px #192415, inset 0 0 0 1px #695a38;
+  pointer-events:none;
+}
+.drop-preview .room-art { opacity:.7; }
+.drop-preview.invalid {
+  background:#573327;
+  border-color:#ffac8a;
+}
+.drop-preview.invalid::after {
+  content:"";
+  position:absolute;
+  inset:0;
+  background:repeating-linear-gradient(135deg,transparent 0 6px,#4b1a0e66 6px 8px);
+}
+.drop-preview.floating {
+  position:fixed;
+  z-index:12;
+  margin:0;
+  opacity:.82;
+  border-color:#c4ba94;
+  box-shadow:0 4px 18px #0504009c;
+}
+.drop-label {
+  z-index:1;
+  position:relative;
+  overflow:hidden;
+  white-space:nowrap;
+  text-overflow:ellipsis;
+  color:#fff4dc;
+  background:#16120cc9;
+  border-radius:2px;
+  padding:1px 3px;
+  font-size:10px;
+}
+@media (any-pointer:coarse) {
+  .palette-add { display:none; }
+  .palette-grip, .room-grip {
+    display:grid; place-items:center; touch-action:none; cursor:grab;
+    border-radius:3px; color:#f5e7bf; background:#17140bd9;
+  }
+  .palette-grip { height:29px; width:21px; margin-left:-6px; }
+  .room-grip {
+    position:absolute; right:2px; top:2px; z-index:2;
+    width:24px; height:23px; border:1px solid #aa967366;
+  }
+  .map-room.elevator .room-grip { inset:0; width:auto; height:24px; }
 }

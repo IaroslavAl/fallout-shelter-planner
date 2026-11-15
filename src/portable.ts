@@ -1,4 +1,4 @@
-import { loadArt, paintTiles, roomTiles, stones, type View } from './roomArt'
+import { loadArt, paintArt, roomImage, stones, type View } from './roomArt'
 import { deflateSync, inflateSync, strFromU8, strToU8 } from 'fflate'
 import { byType, buildable, canPlace, contains, FLOORS, RULES, variant, width, type Vault } from './model'
 
@@ -107,7 +107,7 @@ export function saveFile(data: Blob, name: string) {
 
 export async function exportPNG(vault: Vault, heading: string, metrics: string[], language: 'en'|'ru', legend: string[], view: View) {
   const illustrated = view === 'illustrated'
-  const tiles = illustrated ? vault.rooms.flatMap(roomTiles) : []
+  const tiles = illustrated ? vault.rooms.map(roomImage) : []
   if (illustrated && vault.rocks.length) tiles.push(stones)
   const assets = await loadArt(tiles)
   const floors = Math.max(0,...vault.rooms.map(r=>r.row),...vault.rocks.map(r=>r.row))+1
@@ -140,7 +140,7 @@ export async function exportPNG(vault: Vault, heading: string, metrics: string[]
     const x = pad + rock.col * unit + 2
     const y = top + rock.row * rowHeight + 3
     ctx.fillRect(x,y,3*unit-4,rowHeight-8)
-    if (illustrated) paintTiles(ctx,assets,[stones],x,y,3*unit-4,rowHeight-8)
+    if (illustrated) paintArt(ctx,assets.get(stones),x,y,3*unit-4,rowHeight-8)
   }
   for (const room of vault.rooms) {
     const type = byType[room.type]
@@ -149,7 +149,7 @@ export async function exportPNG(vault: Vault, heading: string, metrics: string[]
     const y = top + room.row * rowHeight + 3
     ctx.fillStyle = '#303930'
     ctx.fillRect(x,y,roomWidth-4,rowHeight-8)
-    const art = illustrated && paintTiles(ctx, assets, roomTiles(room), x, y, roomWidth-4, rowHeight-8)
+    const art = illustrated && paintArt(ctx, assets.get(roomImage(room)), x, y, roomWidth-4, rowHeight-8)
     if (art && room.type !== 'Elevator') {
       const shade = ctx.createLinearGradient(0,y+rowHeight-40,0,y+rowHeight-7)
       shade.addColorStop(0,'#0c0c0800')
@@ -157,7 +157,8 @@ export async function exportPNG(vault: Vault, heading: string, metrics: string[]
       ctx.fillStyle = shade
       ctx.fillRect(x,y+rowHeight-40,roomWidth-4,32)
     }
-    ctx.strokeStyle = colors[type.group]
+    ctx.strokeStyle = room.type==='Elevator'&&art ? '#c4a979' : colors[type.group]
+    ctx.lineWidth = room.type==='Elevator'&&art ? 2 : 1
     ctx.strokeRect(x+.5,y+.5,roomWidth-5,rowHeight-9)
     ctx.fillStyle = art ? '#fff5dd' : colors[type.group]
     if (room.type === 'Elevator') {
